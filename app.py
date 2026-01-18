@@ -1,16 +1,18 @@
 import streamlit as st
-import pandas as pd
 import datetime
 import json
 import os
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 # --- DATA HANDLING ---
-DATA_FILE = "habits.json"
+DATA_FILE = "habits_v2.json"
 
 def load_data():
-    (DATA_FILE)
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    # Default structure with XP
+    return {"habits": {}, "total_xp": 0}
+
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
@@ -20,71 +22,84 @@ st.set_page_config(page_title="Life Optimizer", layout="centered")
 st.title("🚀 Life Optimizer")
 
 data = load_data()
-today = str(datetime.date.today())
+today_date = datetime.date.today()
+today_str = str(today_date)
 
-# --- SIDEBAR: LOG HABITS ---
+# --- XP LOGIC ---
+xp_per_habit = 10
+xp_needed_per_level = 100
+current_level = (data["total_xp"] // xp_needed_per_level) + 1
+progress_to_next_level = (data["total_xp"] % xp_needed_per_level) / xp_needed_per_level
+
+# --- DISPLAY STATS ---
+st.subheader(f"Level {current_level} Warrior")
+st.progress(progress_to_next_level)
+st.caption(f"✨ {data['total_xp'] % xp_needed_per_level} / {xp_needed_per_level} XP to Level {current_level + 1} (Total XP: {data['total_xp']})")
+
+# --- SIDEBAR: SETTINGS ---
 with st.sidebar:
-    st.header("Log Activity")
-    new_habit = st.text_input("Add new habit (e.g., Coding, Gym)")
+    st.header("Settings")
+    new_habit = st.text_input("New Habit Name")
     if st.button("Add Habit"):
-        if new_habit and new_habit not in data:
-            data[new_habit] = []
+        if new_habit and new_habit not in data["habits"]:
+            data["habits"][new_habit] = []
             save_data(data)
             st.rerun()
+    
+    if st.button("Reset All Progress", type="primary"):
+        save_data({"habits": {}, "total_xp": 0})
+        st.rerun()
 
-# --- MAIN INTERFACE ---
-st.subheader("Today's Progress")
-cols = st.columns(len(data) if data else 1)
-
-for i, (habit, dates) in enumerate(data.items()):
-    is_done = today in dates
-    if cols[i % 3].checkbox(habit, value=is_done, key=habit):
-        if today not in dates:
-            data[habit].append(today)
-            save_data(data)
-            st.rerun()
-    else:
-        if today in dates:
-            data[habit].remove(today)
-            save_data(data)
-            st.rerun()
-
-# --- VISUALIZATION (THE HEATMAP) ---
+# --- MAIN INTERFACE: CHECKLIST ---
 st.divider()
-st.subheader("Consistency Heatmap (Last 30 Days)")
+st.subheader("Daily Tasks")
 
-if data:
-    # Create a date range for the last 30 days
-    date_range = [str(datetime.date.today() - datetime.timedelta(days=x)) for x in range(30)]
-    df_map = pd.DataFrame(index=data.keys(), columns=date_range)
-
-    for habit in data.keys():
-        for d in date_range:
-            df_map.loc[habit, d] = 1 if d in data[habit] else 0
-
-    # Plotting
-    fig, ax = plt.subplots(figsize=(10, 3))
-    sns.heatmap(df_map.astype(float), cmap="Greens", cbar=False, linewidths=1, linecolor="#f0f2f6", ax=ax)
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+if not data["habits"]:
+    st.info("Add a habit in the sidebar to start earning XP!")
 else:
-    st.info("Add a habit in the sidebar to start tracking!")
+    for habit in list(data["habits"].keys()):
+        dates = data["habits"][habit]
+        is_done = today_str in dates
+        
+        # Checkbox for habit
+        checked = st.checkbox(f"Completed: {habit}", value=is_done, key=habit)
+        
+        if checked and not is_done:
+            data["habits"][habit].append(today_str)
+            data["total_xp"] += xp_per_habit
+            save_data(data)
+            st.toast(f"Gain +{xp_per_habit} XP!", icon="🔥")
+            st.rerun()
+        elif not checked and is_done:
+            data["habits"][habit].remove(today_str)
+            data["total_xp"] = max(0, data["total_xp"] - xp_per_habit)
+            save_data(data)
+            st.rerun()
 
+# --- VISUALIZATION: MINI GRID ---
+st.subheader("Weekly Momentum")
+cols = st.columns(7)
+for i in range(7):
+    day = today_date - datetime.timedelta(days=(6 - i))
+    day_str = str(day)
+    day_label = day.strftime("%a")
+    
+    # Check if ANY habit was done on that day
+    any_done = any(day_str in dates for dates in data["habits"].values())
+    
+    with cols[i]:
+        st.markdown(f"{'🟩' if any_done else '⬜'}")
+        st.caption(day_label)
 
 # --- FOOTER ---
 st.markdown("""
     <style>
     .footer {
         position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        background-color: transparent;
-        color: #888888;
-        text-align: center;
-        padding: 10px;
-        font-size: 14px;
-        letter-spacing: 1px;
+        left: 0; bottom: 0; width: 100%;
+        background-color: transparent; color: #888888;
+        text-align: center; padding: 10px;
+        font-size: 14px; letter-spacing: 1px;
     }
     </style>
     <div class="footer">
