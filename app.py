@@ -1,82 +1,93 @@
 import streamlit as st
-from datetime import datetime
+import pandas as pd
+import datetime
+import json
+import os
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="Life Optimizer", page_icon="🚀", layout="centered")
+# --- DATA HANDLING ---
+DATA_FILE = "habits.json"
 
-# --- SESSION STATE INITIALIZATION ---
-# Using standard Python types instead of Pandas DataFrames
-if 'xp' not in st.session_state:
-    st.session_state.xp = 0
-if 'level' not in st.session_state:
-    st.session_state.level = 1
-if 'freezes' not in st.session_state:
-    st.session_state.freezes = 2
-if 'habits' not in st.session_state:
-    # Dictionary to store habit name and its completion status
-    st.session_state.habits = {
-        "Gym": False,
-        "Coding": False,
-        "Reading": False
-    }
+def load_data():
+    (DATA_FILE)
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
-# --- LOGIC ---
-def update_xp(habit_name):
-    # Logic to add or subtract XP based on checkbox state
-    if st.session_state[habit_name]:
-        st.session_state.xp += 10
-    else:
-        st.session_state.xp -= 10
-    
-    # Level calculation: Level = 1 + (Total XP / 100)
-    st.session_state.level = 1 + (st.session_state.xp // 100)
-
-# --- UI ---
+# --- UI SETUP ---
+st.set_page_config(page_title="Life Optimizer", layout="centered")
 st.title("🚀 Life Optimizer")
 
-# Level and Freeze Stats
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Level", f"{st.session_state.level} Warrior")
-with col2:
-    st.metric("Streak Freezes", st.session_state.freezes)
+data = load_data()
+today = str(datetime.date.today())
 
-# XP Progress Bar (Standard Python Math)
-progress_val = (st.session_state.xp % 100) / 100
-st.progress(progress_val)
-st.caption(f"{st.session_state.xp % 100} / 100 XP to Next Level")
+# --- SIDEBAR: LOG HABITS ---
+with st.sidebar:
+    st.header("Log Activity")
+    new_habit = st.text_input("Add new habit (e.g., Coding, Gym)")
+    if st.button("Add Habit"):
+        if new_habit and new_habit not in data:
+            data[new_habit] = []
+            save_data(data)
+            st.rerun()
 
-st.divider()
+# --- MAIN INTERFACE ---
+st.subheader("Today's Progress")
+cols = st.columns(len(data) if data else 1)
 
-# Daily Tasks Section
-st.header("Daily Tasks")
-for habit in list(st.session_state.habits.keys()):
-    st.checkbox(
-        habit, 
-        value=st.session_state.habits[habit], 
-        key=habit, 
-        on_change=update_xp, 
-        args=(habit,)
-    )
-
-# Weekly Momentum Heatmap (Visualized using Columns)
-st.header("Weekly Momentum")
-days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-m_cols = st.columns(7)
-for i, col in enumerate(m_cols):
-    with col:
-        st.write(days[i])
-        # Simple logic to show a 'filled' box for demo purposes
-        st.info("🟦") 
-
-st.divider()
-
-# Streak Freeze Button
-if st.button("❄️ Use Streak Freeze"):
-    if st.session_state.freezes > 0:
-        st.session_state.freezes -= 1
-        st.snow()
-        st.success("Freeze Used! Momentum Saved.")
+for i, (habit, dates) in enumerate(data.items()):
+    is_done = today in dates
+    if cols[i % 3].checkbox(habit, value=is_done, key=habit):
+        if today not in dates:
+            data[habit].append(today)
+            save_data(data)
+            st.rerun()
     else:
-        st.error("No Freezes left!")
-        
+        if today in dates:
+            data[habit].remove(today)
+            save_data(data)
+            st.rerun()
+
+# --- VISUALIZATION (THE HEATMAP) ---
+st.divider()
+st.subheader("Consistency Heatmap (Last 30 Days)")
+
+if data:
+    # Create a date range for the last 30 days
+    date_range = [str(datetime.date.today() - datetime.timedelta(days=x)) for x in range(30)]
+    df_map = pd.DataFrame(index=data.keys(), columns=date_range)
+
+    for habit in data.keys():
+        for d in date_range:
+            df_map.loc[habit, d] = 1 if d in data[habit] else 0
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(10, 3))
+    sns.heatmap(df_map.astype(float), cmap="Greens", cbar=False, linewidths=1, linecolor="#f0f2f6", ax=ax)
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+else:
+    st.info("Add a habit in the sidebar to start tracking!")
+
+
+# --- FOOTER ---
+st.markdown("""
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: transparent;
+        color: #888888;
+        text-align: center;
+        padding: 10px;
+        font-size: 14px;
+        letter-spacing: 1px;
+    }
+    </style>
+    <div class="footer">
+        <p>made by <b>Al Hadi</b></p>
+    </div>
+    """, unsafe_allow_html=True)
