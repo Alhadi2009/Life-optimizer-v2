@@ -103,6 +103,6 @@ st.markdown("""
     }
     </style>
     <div class="footer">
-        <p>made by <b>Al Hadi</b></p>
+        <p>made by <b>Al Hadi 😎</b></p>
     </div>
     """, unsafe_allow_html=True)
